@@ -50,7 +50,7 @@ jobs:
     steps:
       - name: Submit session script
         early-cancel: any-job-failed
-        uses: marketplace/job_runner/v5.0
+        uses: marketplace/job_runner/v4.0
         with:
           resource: ${{ inputs.resource }}
           rundir: "${PW_PARENT_JOB_DIR}"
