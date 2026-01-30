@@ -31,7 +31,8 @@ echo "Ray Cluster Setup (Controller Node)"
 echo "=========================================="
 
 # Normalize paths (remove trailing slash, expand ~)
-JOB_DIR="${PW_PARENT_JOB_DIR%/}"
+JOB_DIR="${PW_PARENT_JOB_DIR:-$(pwd)}"
+JOB_DIR="${JOB_DIR%/}"
 RAY_DIR="${RAY_DIR:-${HOME}/pw/activate-ray}"
 RAY_DIR="${RAY_DIR/#\~/$HOME}"
 
