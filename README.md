@@ -5,7 +5,7 @@ Deploy Ray clusters on HPC resources with ACTIVATE.
 ## Quick Start
 
 1. Select your **compute resource**
-2. Choose **Ray Version** (default: 2.9.0)
+2. Choose **Ray Version** (default: 2.40.0)
 3. Enable **Submit to Job Scheduler** for multi-node clusters (SLURM/PBS)
 4. Click **Run**
 

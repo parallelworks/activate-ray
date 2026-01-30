@@ -6,7 +6,7 @@ Detailed configuration options for the Ray Cluster workflow.
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| **Ray Version** | Ray version to install | 2.9.0 |
+| **Ray Version** | Ray version to install | 2.40.0 |
 | **Dashboard Port** | Web dashboard port | 8265 |
 
 Hidden/advanced options (modify in workflow.yaml):
@@ -42,7 +42,7 @@ Hidden/advanced options (modify in workflow.yaml):
 These can be set in `inputs.sh` or passed to the scripts:
 
 ```bash
-RAY_VERSION=2.9.0        # Ray version to install
+RAY_VERSION=2.40.0       # Ray version to install
 DASHBOARD_PORT=8265      # Dashboard port
 RAY_PORT=6379            # GCS port
 NUM_CPUS=0               # CPUs per node (0=auto)

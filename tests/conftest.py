@@ -52,7 +52,7 @@ def default_context(temp_work_dir: Path) -> ExecutionContext:
     return ExecutionContext(
         inputs={
             "resource": {"ip": "localhost", "schedulerType": ""},
-            "ray_version": "2.9.0",
+            "ray_version": "2.40.0",
             "ray_port": 6379,
             "dashboard_port": 8265,
             "num_cpus": 0,
@@ -78,7 +78,7 @@ def dry_run_context(temp_work_dir: Path) -> ExecutionContext:
     return ExecutionContext(
         inputs={
             "resource": {"ip": "localhost", "schedulerType": ""},
-            "ray_version": "2.9.0",
+            "ray_version": "2.40.0",
             "ray_port": 6379,
             "dashboard_port": 8265,
             "num_cpus": 0,
@@ -130,7 +130,7 @@ def sample_workflow() -> dict:
                     },
                     "ray_version": {
                         "type": "string",
-                        "default": "2.9.0",
+                        "default": "2.40.0",
                     },
                     "scheduler": {
                         "type": "boolean",

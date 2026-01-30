@@ -238,7 +238,7 @@ class TestDefaultInputExtraction:
         """Test extracting a simple default value."""
         defaults = get_default_inputs(sample_workflow)
         assert "ray_version" in defaults
-        assert defaults["ray_version"] == "2.9.0"
+        assert defaults["ray_version"] == "2.40.0"
 
     def test_extract_boolean_default(self, sample_workflow):
         """Test extracting a boolean default value."""

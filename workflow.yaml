@@ -8,7 +8,7 @@ permissions:
 sessions:
   session:
     useTLS: false
-    redirect: true
+    redirect: false
 
 jobs:
   # =============================================================================
@@ -25,14 +25,6 @@ jobs:
           branch: main
           sparse_checkout:
             - scripts
-
-      - name: Transfer inputs from user workspace
-        run: |
-          set -e
-          REMOTE_JOB_DIR="./pw/jobs/${PW_WORKFLOW_NAME}/${PW_JOB_NUMBER}/"
-          if [ -f inputs.sh ]; then
-            scp inputs.sh ${{ inputs.resource.ip }}:${REMOTE_JOB_DIR}
-          fi
 
       - name: Run controller setup
         ssh:
@@ -98,19 +90,61 @@ jobs:
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
-      - name: Checkout utils
-        uses: parallelworks/checkout
-        with:
-          repo: https://github.com/parallelworks/activate-sessions.git
-          branch: main
-          sparse_checkout:
-            - utils
-
       - name: Wait for service ready
         early-cancel: any-job-failed
         run: |
-          # Execute the wait script (not sourced - runs as subprocess)
-          bash utils/wait_service.sh
+          set -e
+
+          JOB_DIR="${PW_PARENT_JOB_DIR%/}"
+          TIMEOUT=5
+          INTERVAL=3
+          MAX_ATTEMPTS=100
+
+          echo "Waiting for Ray dashboard..."
+
+          # Wait for job.started
+          attempt=1
+          while [ ! -f "${JOB_DIR}/job.started" ]; do
+            [ -f "${JOB_DIR}/job.ended" ] && { echo "ERROR: Job ended before starting"; exit 1; }
+            echo "[${attempt}/${MAX_ATTEMPTS}] Waiting for job.started..."
+            sleep ${INTERVAL}
+            ((attempt++))
+            [ ${attempt} -gt ${MAX_ATTEMPTS} ] && { echo "ERROR: Timeout waiting for job"; exit 1; }
+          done
+
+          # Wait for HOSTNAME and SESSION_PORT files
+          sleep 2
+          for file in HOSTNAME SESSION_PORT; do
+            attempt=1
+            while [ ! -f "${JOB_DIR}/${file}" ]; do
+              echo "Waiting for ${file}..."
+              sleep 2
+              ((attempt++))
+              [ ${attempt} -gt 10 ] && { echo "ERROR: ${file} not found"; exit 1; }
+            done
+          done
+
+          HOSTNAME=$(cat "${JOB_DIR}/HOSTNAME")
+          SESSION_PORT=$(cat "${JOB_DIR}/SESSION_PORT")
+
+          # Wait for dashboard to respond
+          echo "Waiting for http://${HOSTNAME}:${SESSION_PORT}..."
+          attempt=1
+          while [ ${attempt} -le ${MAX_ATTEMPTS} ]; do
+            if curl -s --connect-timeout ${TIMEOUT} "http://${HOSTNAME}:${SESSION_PORT}" -o /dev/null 2>&1; then
+              echo "Ray Dashboard is ready!"
+              echo "HOSTNAME=${HOSTNAME}" >> "${OUTPUTS}"
+              echo "SESSION_PORT=${SESSION_PORT}" >> "${OUTPUTS}"
+              exit 0
+            fi
+            [ -f "${JOB_DIR}/job.ended" ] && { echo "ERROR: Job ended"; exit 1; }
+            echo "[${attempt}/${MAX_ATTEMPTS}] Dashboard not ready..."
+            sleep ${INTERVAL}
+            ((attempt++))
+          done
+
+          echo "ERROR: Dashboard timeout"
+          exit 1
 
   # =============================================================================
   # UPDATE SESSION - configure session proxy
@@ -171,8 +205,8 @@ jobs:
       ray_version:
         label: Ray Version
         type: string
-        default: "2.9.0"
-        tooltip: Ray version to install (e.g., 2.9.0, 2.10.0)
+        default: "2.40.0"
+        tooltip: Ray version to install (e.g., 2.40.0, 2.10.0)
 
       ray_port:
         label: Ray Port

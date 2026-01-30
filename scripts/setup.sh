@@ -10,7 +10,7 @@
 # - Set up shared resources accessible by compute nodes
 #
 # Environment variables:
-#   RAY_VERSION    - Ray version to install (default: 2.9.0)
+#   RAY_VERSION    - Ray version to install (default: 2.40.0)
 #   DASHBOARD_PORT - Dashboard port (default: 8265)
 #   RAY_PORT       - Ray GCS port (default: 6379)
 #   NUM_CPUS       - CPUs per node (default: auto)
@@ -40,7 +40,7 @@ elif [ -f "${JOB_DIR}/inputs.sh" ]; then
 fi
 
 # Configuration
-RAY_VERSION="${RAY_VERSION:-2.9.0}"
+RAY_VERSION="${RAY_VERSION:-2.40.0}"
 VENV_DIR="${JOB_DIR}/ray_venv"
 DASHBOARD_PORT="${DASHBOARD_PORT:-8265}"
 RAY_PORT="${RAY_PORT:-6379}"
