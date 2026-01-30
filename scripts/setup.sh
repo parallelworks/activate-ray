@@ -98,6 +98,19 @@ install_uv() {
 }
 
 # =============================================================================
+# Check existing venv Python version and recreate if incompatible
+# =============================================================================
+if [ -f "${VENV_DIR}/bin/python" ]; then
+    VENV_PYTHON_VERSION=$("${VENV_DIR}/bin/python" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+    VENV_MINOR=$(echo $VENV_PYTHON_VERSION | cut -d. -f2)
+    if [ "$VENV_MINOR" -lt 9 ] || [ "$VENV_MINOR" -gt 12 ]; then
+        echo "Existing venv has Python ${VENV_PYTHON_VERSION} (incompatible with Ray)"
+        echo "Removing and recreating with Python 3.12..."
+        rm -rf "${VENV_DIR}"
+    fi
+fi
+
+# =============================================================================
 # Check if Ray is already installed at correct version
 # =============================================================================
 INSTALLED_VERSION=""
@@ -120,12 +133,8 @@ else
     if install_uv; then
         echo "Using uv for fast installation..."
         if [ ! -d "${VENV_DIR}" ]; then
-            if [ "$PYTHON_COMPATIBLE" = false ]; then
-                echo "Creating venv with Python 3.12 (uv will download if needed)..."
-                uv venv "${VENV_DIR}" --python 3.12
-            else
-                uv venv "${VENV_DIR}"
-            fi
+            echo "Creating venv with Python 3.12 (uv will download if needed)..."
+            uv venv "${VENV_DIR}" --python 3.12
         fi
         uv pip install --python "${VENV_DIR}/bin/python" "ray[default]==${RAY_VERSION}"
     else
