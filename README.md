@@ -52,16 +52,16 @@ ray job submit --address=http://localhost:8265 --working-dir . -- python hello_r
 source ~/pw/activate-ray/ray_venv/bin/activate
 
 # Submit job through the session tunnel (uploads code via --working-dir)
-ray job submit --address=http://localhost:8888 --working-dir . -- python your_script.py
+ray job submit --address=http://localhost:8888 --working-dir . -- python hello_ray.py
 ```
 
 **From your local machine** (via SSH tunnel):
 ```bash
 # Set up tunnel first
-ssh -L 8888:localhost:8888 -o ProxyCommand="pw ssh --proxy-command %h" $USER@workspace
+ssh -i ~/.ssh/pwcli -L 8888:localhost:8888 -o ProxyCommand="pw ssh --proxy-command %h" $USER@workspace
 
 # Then submit jobs (uploads code via --working-dir)
-ray job submit --address=http://localhost:8888 --working-dir . -- python your_script.py
+ray job submit --address=http://localhost:8888 --working-dir . -- python hello_ray.py
 ```
 
 ### Installing Additional Packages
@@ -69,14 +69,11 @@ ray job submit --address=http://localhost:8888 --working-dir . -- python your_sc
 The default Ray installation includes only `ray[default]`. For GPU workloads with PyTorch or TensorFlow:
 
 ```bash
-# Activate the Ray virtual environment
-source ~/pw/activate-ray/ray_venv/bin/activate
-
-# Install PyTorch with CUDA support
-pip install torch
+# Install PyTorch with CUDA support (uv is pre-installed by the workflow)
+uv pip install --python ~/pw/activate-ray/ray_venv/bin/python torch
 
 # Or install TensorFlow
-pip install tensorflow
+uv pip install --python ~/pw/activate-ray/ray_venv/bin/python tensorflow
 ```
 
 > **Note:** The `examples/gpu_workload.py` script works without PyTorch but will show "PyTorch not available" messages. Install PyTorch to enable GPU matrix computations in the example.
