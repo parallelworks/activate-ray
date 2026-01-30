@@ -8,7 +8,7 @@ permissions:
 sessions:
   session:
     useTLS: false
-    redirect: false
+    redirect: true
 
 jobs:
   # =============================================================================
@@ -23,6 +23,7 @@ jobs:
         with:
           repo: https://github.com/parallelworks/activate-ray.git
           branch: main
+          path: ${{ inputs.ray_dir }}
           sparse_checkout:
             - scripts
 
@@ -31,8 +32,11 @@ jobs:
           remoteHost: ${{ inputs.resource.ip }}
         run: |
           set -e
-          cd scripts
+          RAY_DIR="${{ inputs.ray_dir }}"
+          RAY_DIR="${RAY_DIR/#\~/$HOME}"
+          cd "${RAY_DIR}/scripts"
           export RAY_VERSION="${{ inputs.ray_version }}"
+          export RAY_DIR="${RAY_DIR}"
           export DASHBOARD_PORT="${{ inputs.dashboard_port }}"
           export RAY_PORT="${{ inputs.ray_port }}"
           export NUM_CPUS="${{ inputs.num_cpus }}"
@@ -56,6 +60,8 @@ jobs:
           rundir: "${PW_PARENT_JOB_DIR}"
           scheduler: ${{ inputs.submit_to_scheduler }}
           inject_markers: true
+          env:
+            RAY_DIR: ${{ inputs.ray_dir }}
           slurm:
             is_disabled: ${{ inputs.submit_to_scheduler != true || inputs.resource.schedulerType != 'slurm' }}
             account: ${{ inputs.slurm.account }}
@@ -76,7 +82,7 @@ jobs:
             scheduler_directives: |
               ${{ inputs.pbs.scheduler_directives }}
           use_existing_script: true
-          script_path: "${PW_PARENT_JOB_DIR}/scripts/start.sh"
+          script_path: ${{ inputs.ray_dir }}/scripts/start.sh
 
       - name: Notify job ended
         early-cancel: any-job-failed
@@ -237,6 +243,13 @@ jobs:
         min: 0
         hidden: true
         tooltip: Number of GPUs to allocate per Ray node (0 = auto-detect)
+
+      ray_dir:
+        label: Ray Directory
+        type: string
+        default: "~/pw/activate-ray"
+        hidden: true
+        tooltip: Shared directory for Ray installation and scripts. Reuses existing installation if version matches.
 
       slurm:
         type: group
