@@ -1,356 +1,71 @@
 # yaml-language-server: $schema=https://activate.parallel.works/workflow.schema.json
 ---
-# ==============================================================================
-# Ray Cluster Workflow
-# ==============================================================================
-# A workflow for starting a Ray cluster on HPC resources and submitting jobs.
-#
-# This workflow supports three execution modes:
-#   - SSH Direct: Single-node Ray cluster on the login/head node
-#   - SLURM: Multi-node Ray cluster across SLURM-allocated nodes
-#   - PBS: Multi-node Ray cluster across PBS-allocated nodes
-#
-# Features:
-#   - Automatic Ray installation in virtual environment
-#   - Multi-node cluster support with automatic head/worker setup
-#   - Dashboard access for monitoring
-#   - Job submission interface
-#   - Configurable resources (CPUs, GPUs, memory)
-#
-# Usage:
-#   1. Select a compute resource
-#   2. Configure Ray settings (version, resources)
-#   3. Choose execution mode (SSH direct or scheduler)
-#   4. Optionally provide a Ray job script to execute
-#   5. Run the workflow
-#
-# For more information, see README.md
-# ==============================================================================
+# Ray Cluster - Session workflow for SLURM/PBS/Controller execution
+# Modify service scripts in scripts/ directory
 
 permissions:
   - "*"
 sessions:
   session:
     useTLS: false
-    redirect: false
+    redirect: true
 
 jobs:
-  # ============================================================================
-  # SETUP - Install Ray and prepare environment
-  # ============================================================================
-  setup:
-    working-directory: "${PW_PARENT_JOB_DIR}"
+  # =============================================================================
+  # PREPROCESSING
+  # =============================================================================
+  preprocessing:
+    steps:
+      - name: Checkout service scripts
+        uses: parallelworks/checkout
+        ssh:
+          remoteHost: ${{ inputs.resource.ip }}
+        with:
+          repo: https://github.com/parallelworks/activate-ray.git
+          branch: main
+          sparse_checkout:
+            - scripts
+
+      - name: Transfer inputs from user workspace
+        run: |
+          set -e
+          REMOTE_JOB_DIR="./pw/jobs/${PW_WORKFLOW_NAME}/${PW_JOB_NUMBER}/"
+          if [ -f inputs.sh ]; then
+            scp inputs.sh ${{ inputs.resource.ip }}:${REMOTE_JOB_DIR}
+          fi
+
+      - name: Run controller setup
+        ssh:
+          remoteHost: ${{ inputs.resource.ip }}
+        run: |
+          set -e
+          cd scripts
+          export RAY_VERSION="${{ inputs.ray_version }}"
+          export DASHBOARD_PORT="${{ inputs.dashboard_port }}"
+          export RAY_PORT="${{ inputs.ray_port }}"
+          export NUM_CPUS="${{ inputs.num_cpus }}"
+          export NUM_GPUS="${{ inputs.num_gpus }}"
+          export PW_SESSION_NAME="${{ sessions.session }}"
+          bash setup.sh
+
+  # =============================================================================
+  # SESSION RUNNER - runs start.sh on compute node
+  # =============================================================================
+  session_runner:
+    needs: [preprocessing]
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
-      - name: Create working directory
-        run: |
-          set -e
-          mkdir -p "${PW_PARENT_JOB_DIR}"
-          echo "$(date) Working directory: ${PW_PARENT_JOB_DIR}"
-
-      - name: Setup Ray environment
-        run: |
-          set -e
-          echo "=============================================="
-          echo "  Setting up Ray Environment"
-          echo "=============================================="
-
-          RAY_VERSION="${{ inputs.ray_version }}"
-          VENV_DIR="${PW_PARENT_JOB_DIR}/ray_venv"
-
-          echo "Configuration:"
-          echo "  Ray Version:    ${RAY_VERSION}"
-          echo "  Venv Directory: ${VENV_DIR}"
-
-          # Check Python
-          if ! command -v python3 &> /dev/null; then
-              echo "ERROR: python3 not found"
-              exit 1
-          fi
-          python3 --version
-
-          # Function to install uv
-          install_uv() {
-              if command -v uv &> /dev/null; then
-                  echo "uv is already installed: $(uv --version)"
-                  return 0
-              fi
-              echo "Installing uv package manager..."
-              if command -v curl &> /dev/null; then
-                  curl -LsSf https://astral.sh/uv/install.sh | sh
-              elif command -v wget &> /dev/null; then
-                  wget -qO- https://astral.sh/uv/install.sh | sh
-              else
-                  echo "WARNING: Cannot install uv (no curl/wget)"
-                  return 1
-              fi
-              export PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
-              command -v uv &> /dev/null
-          }
-
-          # Try to use uv for faster installation
-          if install_uv; then
-              echo "Using uv for fast installation..."
-              if [ ! -d "${VENV_DIR}" ]; then
-                  uv venv "${VENV_DIR}"
-              fi
-              uv pip install --python "${VENV_DIR}/bin/python" "ray[default]==${RAY_VERSION}"
-          else
-              echo "Using pip for installation..."
-              if [ ! -d "${VENV_DIR}" ]; then
-                  python3 -m venv "${VENV_DIR}"
-              fi
-              source "${VENV_DIR}/bin/activate"
-              pip install --upgrade pip --quiet
-              pip install "ray[default]==${RAY_VERSION}" --quiet
-          fi
-
-          # Verify
-          source "${VENV_DIR}/bin/activate"
-          ray --version
-          python3 -c "import ray; print(f'Ray {ray.__version__} installed successfully')"
-
-          echo "VENV_PATH=${VENV_DIR}"
-
-      - name: Copy user job script
-        run: |
-          set -e
-          USER_SCRIPT_CONTENT='${{ inputs.user_script }}'
-
-          if [ -n "${USER_SCRIPT_CONTENT}" ] && [ "${USER_SCRIPT_CONTENT}" != "" ]; then
-            echo "Saving user job script..."
-            cat > "${PW_PARENT_JOB_DIR}/user_job.py" << 'USER_SCRIPT_EOF'
-          ${{ inputs.user_script }}
-          USER_SCRIPT_EOF
-            echo "User script saved to: ${PW_PARENT_JOB_DIR}/user_job.py"
-            cat "${PW_PARENT_JOB_DIR}/user_job.py"
-          else
-            echo "No user script provided"
-          fi
-
-      - name: Generate cluster startup script
-        run: |
-          set -e
-          echo "Generating cluster startup script..."
-
-          VENV_DIR="${PW_PARENT_JOB_DIR}/ray_venv"
-          RAY_PORT="${{ inputs.ray_port }}"
-          DASHBOARD_PORT="${{ inputs.dashboard_port }}"
-          NUM_CPUS="${{ inputs.num_cpus }}"
-          NUM_GPUS="${{ inputs.num_gpus }}"
-          SCHEDULER="${{ inputs.scheduler }}"
-          SCHEDULER_TYPE="${{ inputs.resource.schedulerType }}"
-
-          cat > "${PW_PARENT_JOB_DIR}/start_cluster.sh" << 'CLUSTER_SCRIPT_EOF'
-          #!/bin/bash
-          set -e
-
-          # Configuration
-          VENV_DIR="${VENV_DIR:-${PW_PARENT_JOB_DIR}/ray_venv}"
-          RAY_PORT="${RAY_PORT:-6379}"
-          DASHBOARD_PORT="${DASHBOARD_PORT:-8265}"
-          NUM_CPUS="${NUM_CPUS:-}"
-          NUM_GPUS="${NUM_GPUS:-}"
-
-          # Activate venv
-          source "${VENV_DIR}/bin/activate"
-
-          # Build resource args
-          RESOURCE_ARGS=""
-          [ -n "${NUM_CPUS}" ] && [ "${NUM_CPUS}" != "0" ] && RESOURCE_ARGS="${RESOURCE_ARGS} --num-cpus=${NUM_CPUS}"
-          [ -n "${NUM_GPUS}" ] && [ "${NUM_GPUS}" != "0" ] && RESOURCE_ARGS="${RESOURCE_ARGS} --num-gpus=${NUM_GPUS}"
-
-          # Detect execution mode
-          if [ -n "${SLURM_JOB_NODELIST}" ]; then
-              echo "Detected SLURM environment"
-              NODELIST=$(scontrol show hostnames ${SLURM_JOB_NODELIST})
-              HEAD_NODE=$(echo "${NODELIST}" | head -n 1)
-              HEAD_NODE_IP=$(getent hosts ${HEAD_NODE} | awk '{ print $1 }' | head -n 1)
-              [ -z "${HEAD_NODE_IP}" ] && HEAD_NODE_IP=${HEAD_NODE}
-
-              CURRENT_HOST=$(hostname -s)
-              NUM_NODES=${SLURM_JOB_NUM_NODES}
-
-          elif [ -n "${PBS_NODEFILE}" ]; then
-              echo "Detected PBS environment"
-              NODELIST=$(cat ${PBS_NODEFILE} | sort -u)
-              HEAD_NODE=$(echo "${NODELIST}" | head -n 1)
-              HEAD_NODE_IP=$(getent hosts ${HEAD_NODE} | awk '{ print $1 }' | head -n 1)
-              [ -z "${HEAD_NODE_IP}" ] && HEAD_NODE_IP=${HEAD_NODE}
-
-              CURRENT_HOST=$(hostname -s)
-              NUM_NODES=$(echo "${NODELIST}" | wc -l)
-
-          else
-              echo "Running in SSH direct mode (single node)"
-              HEAD_NODE=$(hostname)
-              HEAD_NODE_IP=$(hostname -i 2>/dev/null | awk '{print $1}' || echo "127.0.0.1")
-              CURRENT_HOST=${HEAD_NODE}
-              NODELIST=${HEAD_NODE}
-              NUM_NODES=1
-          fi
-
-          echo "=============================================="
-          echo "  Starting Ray Cluster"
-          echo "=============================================="
-          echo "Head Node:    ${HEAD_NODE}"
-          echo "Head Node IP: ${HEAD_NODE_IP}"
-          echo "Total Nodes:  ${NUM_NODES}"
-          echo ""
-
-          # Stop any existing Ray
-          ray stop --force 2>/dev/null || true
-
-          # Check if this is the head node
-          if [[ "$(hostname)" == "${HEAD_NODE}"* ]] || [[ "$(hostname -s)" == "${HEAD_NODE}"* ]]; then
-              echo "Starting Ray HEAD on $(hostname)..."
-              ray start --head \
-                  --port=${RAY_PORT} \
-                  --dashboard-host=0.0.0.0 \
-                  --dashboard-port=${DASHBOARD_PORT} \
-                  ${RESOURCE_ARGS}
-
-              # Write connection info
-              cat > "${PW_PARENT_JOB_DIR}/ray_connection_info.txt" << EOF
-          RAY_HEAD_IP=${HEAD_NODE_IP}
-          RAY_HEAD_HOSTNAME=${HEAD_NODE}
-          RAY_ADDRESS=ray://${HEAD_NODE_IP}:10001
-          RAY_HEAD_ADDRESS=${HEAD_NODE_IP}:${RAY_PORT}
-          DASHBOARD_URL=http://${HEAD_NODE_IP}:${DASHBOARD_PORT}
-          NUM_NODES=${NUM_NODES}
-          EOF
-
-              sleep 5
-
-              # Start workers on other nodes if multi-node
-              if [ ${NUM_NODES} -gt 1 ]; then
-                  WORKER_NODES=$(echo "${NODELIST}" | tail -n +2)
-                  for node in ${WORKER_NODES}; do
-                      echo "Starting Ray WORKER on ${node}..."
-                      if [ -n "${SLURM_JOB_ID}" ]; then
-                          srun --nodes=1 --ntasks=1 -w ${node} \
-                              bash -c "source ${VENV_DIR}/bin/activate && ray stop --force 2>/dev/null; ray start --address=${HEAD_NODE_IP}:${RAY_PORT} ${RESOURCE_ARGS}" &
-                      else
-                          ssh ${node} "source ${VENV_DIR}/bin/activate && ray stop --force 2>/dev/null; ray start --address=${HEAD_NODE_IP}:${RAY_PORT} ${RESOURCE_ARGS}" &
-                      fi
-                  done
-                  wait
-              fi
-
-              sleep 5
-              echo ""
-              echo "Cluster Status:"
-              ray status || true
-
-          else
-              echo "This node ($(hostname)) is a worker, waiting for head..."
-              sleep 10
-              echo "Starting Ray WORKER on $(hostname)..."
-              ray start --address=${HEAD_NODE_IP}:${RAY_PORT} ${RESOURCE_ARGS}
-          fi
-
-          echo ""
-          echo "=============================================="
-          echo "  Ray Cluster Ready"
-          echo "=============================================="
-          cat "${PW_PARENT_JOB_DIR}/ray_connection_info.txt" 2>/dev/null || true
-          echo "=============================================="
-
-          CLUSTER_SCRIPT_EOF
-
-          chmod +x "${PW_PARENT_JOB_DIR}/start_cluster.sh"
-          echo "Cluster script created: ${PW_PARENT_JOB_DIR}/start_cluster.sh"
-
-      - name: Generate job submission script
-        run: |
-          set -e
-          cat > "${PW_PARENT_JOB_DIR}/run_ray_job.sh" << 'JOB_SCRIPT_EOF'
-          #!/bin/bash
-          set -e
-
-          VENV_DIR="${PW_PARENT_JOB_DIR}/ray_venv"
-          source "${VENV_DIR}/bin/activate"
-
-          # Load connection info
-          if [ -f "${PW_PARENT_JOB_DIR}/ray_connection_info.txt" ]; then
-              source "${PW_PARENT_JOB_DIR}/ray_connection_info.txt"
-          fi
-
-          # Run the cluster startup
-          source "${PW_PARENT_JOB_DIR}/start_cluster.sh"
-
-          # Wait for cluster to stabilize
-          sleep 5
-
-          # Check if user script exists and run it
-          if [ -f "${PW_PARENT_JOB_DIR}/user_job.py" ]; then
-              echo ""
-              echo "=============================================="
-              echo "  Running User Job"
-              echo "=============================================="
-
-              # Get dashboard address for job submission
-              RAY_HOST=$(echo "${RAY_ADDRESS}" | sed 's|ray://||' | cut -d: -f1)
-              JOB_ADDRESS="http://${RAY_HOST}:${DASHBOARD_PORT:-8265}"
-
-              echo "Submitting job to: ${JOB_ADDRESS}"
-              ray job submit \
-                  --address="${JOB_ADDRESS}" \
-                  --working-dir="${PW_PARENT_JOB_DIR}" \
-                  -- python user_job.py
-          else
-              echo ""
-              echo "No user job script provided."
-              echo "Cluster is ready for job submission."
-              echo ""
-              echo "To submit jobs, use:"
-              echo "  ray job submit --address=\${DASHBOARD_URL} -- python your_script.py"
-          fi
-
-          # Keep cluster alive for interactive use
-          echo ""
-          echo "=============================================="
-          echo "  Cluster Running - Waiting for jobs"
-          echo "=============================================="
-          echo ""
-          echo "Dashboard: ${DASHBOARD_URL}"
-          echo "Ray Address: ${RAY_ADDRESS}"
-          echo ""
-          echo "The cluster will remain active until the job ends."
-          echo "Cancel the workflow to shut down the cluster."
-
-          # Keep alive
-          while true; do
-              sleep 60
-              ray status 2>/dev/null || echo "Health check: cluster status unavailable"
-          done
-          JOB_SCRIPT_EOF
-
-          chmod +x "${PW_PARENT_JOB_DIR}/run_ray_job.sh"
-          echo "Job script created: ${PW_PARENT_JOB_DIR}/run_ray_job.sh"
-
-  # ============================================================================
-  # RAY CLUSTER - Start Ray cluster via job_runner (handles SSH/SLURM/PBS)
-  # ============================================================================
-  ray_cluster:
-    needs: [setup]
-    working-directory: "${PW_PARENT_JOB_DIR}"
-    ssh:
-      remoteHost: ${{ inputs.resource.ip }}
-    steps:
-      - name: Start Ray cluster
+      - name: Submit session script
         early-cancel: any-job-failed
-        uses: marketplace/job_runner/v4.0
+        uses: marketplace/job_runner/v5.0
         with:
           resource: ${{ inputs.resource }}
           rundir: "${PW_PARENT_JOB_DIR}"
-          poll_interval: 10
-          use_existing_script: true
-          script_path: "${PW_PARENT_JOB_DIR}/run_ray_job.sh"
-          scheduler: ${{ inputs.scheduler }}
+          scheduler: ${{ inputs.submit_to_scheduler }}
+          inject_markers: true
           slurm:
-            is_disabled: ${{ inputs.resource.schedulerType != 'slurm' || inputs.scheduler == false }}
+            is_disabled: ${{ inputs.submit_to_scheduler != true || inputs.resource.schedulerType != 'slurm' }}
             account: ${{ inputs.slurm.account }}
             partition: ${{ inputs.slurm.partition }}
             qos: ${{ inputs.slurm.qos }}
@@ -358,51 +73,18 @@ jobs:
             nodes: ${{ inputs.slurm.nodes }}
             cpus_per_task: ${{ inputs.slurm.cpus_per_task }}
             gres: ${{ inputs.slurm.gres }}
-            mem: ${{ inputs.slurm.mem }}
-            scheduler_directives: ${{ inputs.slurm.scheduler_directives }}
+            scheduler_directives: |
+              ${{ inputs.slurm.scheduler_directives }}
           pbs:
-            is_disabled: ${{ inputs.resource.schedulerType != 'pbs' || inputs.scheduler == false }}
+            is_disabled: ${{ inputs.submit_to_scheduler != true || inputs.resource.schedulerType != 'pbs' }}
             account: ${{ inputs.pbs.account }}
             queue: ${{ inputs.pbs.queue }}
             walltime: ${{ inputs.pbs.walltime }}
             select: ${{ inputs.pbs.select }}
-            scheduler_directives: ${{ inputs.pbs.scheduler_directives }}
-
-      - name: Show cluster output
-        run: |
-          echo "=============================================="
-          echo "  Ray Cluster Output"
-          echo "=============================================="
-          OUTPUT_FILE="run.${PW_JOB_ID}.out"
-          if [ -f "${OUTPUT_FILE}" ]; then
-            cat "${OUTPUT_FILE}"
-          else
-            echo "Output file not found: ${OUTPUT_FILE}"
-            ls -la
-          fi
-
-      - name: Display connection info
-        run: |
-          echo ""
-          echo "=============================================="
-          echo "  Ray Cluster Connection Information"
-          echo "=============================================="
-          if [ -f "${PW_PARENT_JOB_DIR}/ray_connection_info.txt" ]; then
-            cat "${PW_PARENT_JOB_DIR}/ray_connection_info.txt"
-            echo ""
-            echo "To connect from your local machine:"
-            echo "1. Set up SSH tunnel:"
-            source "${PW_PARENT_JOB_DIR}/ray_connection_info.txt"
-            echo "   ssh -L 8265:${RAY_HEAD_IP}:8265 -L 10001:${RAY_HEAD_IP}:10001 user@cluster"
-            echo ""
-            echo "2. Access dashboard: http://localhost:8265"
-            echo ""
-            echo "3. Submit jobs:"
-            echo "   ray job submit --address=http://localhost:8265 -- python your_script.py"
-          else
-            echo "Connection info not available"
-          fi
-          echo "=============================================="
+            scheduler_directives: |
+              ${{ inputs.pbs.scheduler_directives }}
+          use_existing_script: true
+          script_path: "${PW_PARENT_JOB_DIR}/scripts/start.sh"
 
       - name: Notify job ended
         early-cancel: any-job-failed
@@ -412,73 +94,23 @@ jobs:
   # WAIT FOR SERVICE - wait for job to start and get connection info
   # ==============================================================================
   wait_for_service:
-    needs: [setup]
+    needs: [preprocessing]
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
+      - name: Checkout utils
+        uses: parallelworks/checkout
+        with:
+          repo: https://github.com/parallelworks/activate-sessions.git
+          branch: main
+          sparse_checkout:
+            - utils
+
       - name: Wait for service ready
         early-cancel: any-job-failed
         run: |
-          set -e
-
-          # Configuration
-          TIMEOUT=${WAIT_TIMEOUT:-5}
-          INTERVAL=${WAIT_INTERVAL:-3}
-          MAX_ATTEMPTS=${MAX_ATTEMPTS:-100}
-
-          JOB_DIR="${PW_PARENT_JOB_DIR%/}"
-          CONNECTION_FILE="${JOB_DIR}/ray_connection_info.txt"
-          DASHBOARD_PORT="${{ inputs.dashboard_port }}"
-
-          echo "=========================================="
-          echo "  Waiting for Ray Dashboard"
-          echo "=========================================="
-
-          # Wait for connection info file
-          echo "Waiting for connection info..."
-          attempt=1
-          while [ ! -f "${CONNECTION_FILE}" ]; do
-              if [ ${attempt} -ge ${MAX_ATTEMPTS} ]; then
-                  echo "ERROR: Connection info not found after ${MAX_ATTEMPTS} attempts"
-                  exit 1
-              fi
-              echo "  [${attempt}/${MAX_ATTEMPTS}] Waiting for ${CONNECTION_FILE}..."
-              sleep "${INTERVAL}"
-              ((attempt++))
-          done
-
-          # Read connection info
-          source "${CONNECTION_FILE}"
-          DASHBOARD_HOST="${RAY_HEAD_IP:-localhost}"
-
-          echo "Dashboard target: http://${DASHBOARD_HOST}:${DASHBOARD_PORT}"
-
-          # Wait for dashboard to respond
-          echo "Waiting for dashboard to respond..."
-          attempt=1
-          while [ ${attempt} -le ${MAX_ATTEMPTS} ]; do
-              if curl -s --connect-timeout "${TIMEOUT}" --max-time "${TIMEOUT}" \
-                  "http://${DASHBOARD_HOST}:${DASHBOARD_PORT}" -o /dev/null 2>&1; then
-                  echo ""
-                  echo "=========================================="
-                  echo "  Ray Dashboard is ready!"
-                  echo "=========================================="
-                  echo "  URL: http://${DASHBOARD_HOST}:${DASHBOARD_PORT}"
-                  echo "=========================================="
-
-                  # Write outputs for update_session
-                  echo "HOSTNAME=${DASHBOARD_HOST}" >> "${OUTPUTS}"
-                  echo "SESSION_PORT=${DASHBOARD_PORT}" >> "${OUTPUTS}"
-                  exit 0
-              fi
-
-              echo "  [${attempt}/${MAX_ATTEMPTS}] Dashboard not ready, retrying in ${INTERVAL}s..."
-              sleep "${INTERVAL}"
-              ((attempt++))
-          done
-
-          echo "ERROR: Dashboard did not respond after ${MAX_ATTEMPTS} attempts"
-          exit 1
+          # Execute the wait script (not sourced - runs as subprocess)
+          bash utils/wait_service.sh
 
   # =============================================================================
   # UPDATE SESSION - configure session proxy
@@ -502,25 +134,40 @@ jobs:
           remotePort: ${{ needs.wait_for_service.outputs.SESSION_PORT }}
           local_port: ${{ needs.update_session.outputs.local_port }}
 
-# ==============================================================================
-# INPUT DEFINITIONS
-# ==============================================================================
+  # =============================================================================
+  # COMPLETE - print connection info
+  # =============================================================================
+  complete:
+    needs: [update_session]
+    steps:
+      - name: Session ready
+        run: |
+          local_port="${{ needs.update_session.outputs.local_port }}"
+          basepath="/me/session/${PW_USER}/${{ sessions.session }}"
+          echo "=========================================="
+          echo "Ray Dashboard Session is ready!"
+          echo "=========================================="
+          echo "  Proxy URL: https://${PW_PLATFORM_HOST}${basepath}/"
+          echo "  Local tunnel: ssh -L ${local_port}:localhost:${local_port} -o ProxyCommand=\"pw ssh --proxy-command %h\" ${PW_USER}@workspace"
+          echo "  Then access: http://localhost:${local_port}/"
+          echo "=========================================="
+
 "on":
   execute:
     inputs:
-      # ========================================================================
-      # Core Settings
-      # ========================================================================
       resource:
-        label: Compute Resource
         type: compute-clusters
+        label: Service host
+        include-workspace: false
         autoselect: true
-        optional: false
-        tooltip: Select the compute resource where the Ray cluster will run
 
-      # ========================================================================
-      # Ray Configuration
-      # ========================================================================
+      submit_to_scheduler:
+        type: boolean
+        label: Submit to Job Scheduler
+        tooltip: Enable to submit job via SLURM or PBS scheduler (detected automatically from resource). Disable for direct SSH execution.
+        default: false
+        hidden: ${{ inputs.resource.schedulerType != 'slurm' && inputs.resource.schedulerType != 'pbs' }}
+
       ray_version:
         label: Ray Version
         type: string
@@ -531,6 +178,7 @@ jobs:
         label: Ray Port
         type: number
         default: 6379
+        hidden: true
         tooltip: Port for Ray head node GCS
 
       dashboard_port:
@@ -544,6 +192,7 @@ jobs:
         type: number
         default: 0
         min: 0
+        hidden: true
         tooltip: Number of CPUs to allocate per Ray node (0 = auto-detect)
 
       num_gpus:
@@ -551,98 +200,43 @@ jobs:
         type: number
         default: 0
         min: 0
+        hidden: true
         tooltip: Number of GPUs to allocate per Ray node (0 = auto-detect)
 
-      # ========================================================================
-      # User Job Script
-      # ========================================================================
-      user_script:
-        label: Ray Job Script (Python)
-        type: editor
-        optional: true
-        default: |
-          # Example Ray job script
-          # This script will be executed on the Ray cluster
-
-          import ray
-
-          # Initialize Ray (connects to the running cluster)
-          ray.init()
-
-          # Print cluster resources
-          print("Ray cluster resources:")
-          print(ray.cluster_resources())
-
-          # Define a simple remote function
-          @ray.remote
-          def hello_ray(x):
-              import socket
-              return f"Hello from {socket.gethostname()}, result: {x * 2}"
-
-          # Execute tasks across the cluster
-          print("\nRunning distributed tasks...")
-          futures = [hello_ray.remote(i) for i in range(10)]
-          results = ray.get(futures)
-
-          for result in results:
-              print(f"  {result}")
-
-          print("\nRay job completed successfully!")
-        tooltip: |
-          Python script to execute on the Ray cluster.
-          Leave empty to just start the cluster without running a job.
-          The script will be submitted using 'ray job submit'.
-
-      # ========================================================================
-      # Execution Mode
-      # ========================================================================
-      scheduler:
-        type: boolean
-        default: false
-        label: Submit via Scheduler?
-        hidden: ${{ inputs.resource.schedulerType == '' }}
-        tooltip: |
-          Enable to submit via cluster scheduler (SLURM/PBS) for multi-node clusters.
-          Disable for direct SSH execution (single-node cluster).
-
-      # ========================================================================
-      # SLURM Configuration
-      # ========================================================================
       slurm:
         type: group
-        label: SLURM Settings
-        hidden: ${{ inputs.resource.schedulerType != 'slurm' || inputs.scheduler == false }}
+        label: SLURM Configuration
+        hidden: ${{ inputs.submit_to_scheduler != true || inputs.resource.schedulerType != 'slurm' }}
+        collapsed: true
         items:
+          is_disabled:
+            type: boolean
+            default: ${{ inputs.submit_to_scheduler != true || inputs.resource.schedulerType != 'slurm' }}
+            hidden: true
+
           account:
             label: Account
             type: slurm-accounts
             resource: ${{ inputs.resource }}
-            optional: true
             tooltip: SLURM account for job submission (--account)
-            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.scheduler == false }}
+            optional: true
+            ignore: ${{ inputs.submit_to_scheduler != true || inputs.resource.schedulerType != 'slurm' }}
 
           partition:
             type: slurm-partitions
             label: Partition
-            resource: ${{ inputs.resource }}
             optional: true
-            tooltip: SLURM partition for job submission (--partition)
-            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.scheduler == false }}
+            resource: ${{ inputs.resource }}
+            tooltip: Partition for job submission (--partition)
+            ignore: ${{ inputs.submit_to_scheduler != true || inputs.resource.schedulerType != 'slurm' }}
 
           qos:
-            label: Quality of Service
+            label: Quality of Service (QoS)
             type: slurm-qos
             resource: ${{ inputs.resource }}
-            optional: true
             tooltip: SLURM QoS setting (--qos)
-            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.scheduler == false }}
-
-          time:
-            label: Walltime
-            type: string
-            default: "04:00:00"
-            tooltip: Maximum job duration for the Ray cluster (--time)
-            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.scheduler == false }}
+            optional: true
+            ignore: ${{ inputs.submit_to_scheduler != true || inputs.resource.schedulerType != 'slurm' }}
 
           nodes:
             label: Number of Nodes
@@ -650,90 +244,93 @@ jobs:
             default: 2
             min: 1
             tooltip: Number of nodes for the Ray cluster (--nodes)
-            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.scheduler == false }}
+            ignore: ${{ inputs.submit_to_scheduler != true || inputs.resource.schedulerType != 'slurm' }}
 
           cpus_per_task:
-            label: CPUs per Task
             type: number
-            default: 4
+            label: CPUs per Task
             min: 1
-            optional: true
-            tooltip: Number of CPUs per task (--cpus-per-task)
-            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.scheduler == false }}
+            max: 256
+            default: 4
+            tooltip: Number of CPUs for the job (--cpus-per-task)
+            ignore: ${{ inputs.submit_to_scheduler != true || inputs.resource.schedulerType != 'slurm' }}
+
+          time:
+            label: Walltime
+            type: string
+            default: 04:00:00
+            tooltip: Maximum job duration, e.g., 04:00:00 (--time)
+            ignore: ${{ inputs.submit_to_scheduler != true || inputs.resource.schedulerType != 'slurm' }}
 
           gres:
-            label: Generic Resources (GPUs)
-            type: string
-            placeholder: "gpu:1"
+            label: GPUs (gres)
+            type: dropdown
+            default: ""
             optional: true
-            tooltip: Generic resource specification, e.g., gpu:1, gpu:a100:2 (--gres)
-            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.scheduler == false }}
-
-          mem:
-            label: Memory
-            type: string
-            placeholder: "32G"
-            optional: true
-            tooltip: Memory per node (--mem)
-            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.scheduler == false }}
+            tooltip: GPU resource specification (--gres). Leave empty for CPU-only jobs.
+            options:
+              - value: ""
+                label: "No GPU (CPU only)"
+              - value: "gpu:1"
+                label: "1 GPU (gpu:1)"
+              - value: "gpu:2"
+                label: "2 GPUs (gpu:2)"
+              - value: "gpu:4"
+                label: "4 GPUs (gpu:4)"
+              - value: "gpu:8"
+                label: "8 GPUs (gpu:8)"
+            ignore: ${{ inputs.submit_to_scheduler != true || inputs.resource.schedulerType != 'slurm' }}
 
           scheduler_directives:
             type: editor
             label: Additional Directives
             optional: true
-            tooltip: |
-              Additional SLURM directives (one per line, include #SBATCH prefix)
-              Example:
-                #SBATCH --exclusive
-                #SBATCH --mail-type=END
-            ignore: ${{ inputs.resource.schedulerType != 'slurm' || inputs.scheduler == false }}
+            tooltip: Additional SLURM directives (include #SBATCH prefix)
+            ignore: ${{ inputs.submit_to_scheduler != true || inputs.resource.schedulerType != 'slurm' }}
 
-      # ========================================================================
-      # PBS Configuration
-      # ========================================================================
       pbs:
         type: group
-        label: PBS Settings
-        hidden: ${{ inputs.resource.schedulerType != 'pbs' || inputs.scheduler == false }}
+        label: PBS Configuration
+        hidden: ${{ inputs.submit_to_scheduler != true || inputs.resource.schedulerType != 'pbs' }}
+        collapsed: true
         items:
+          is_disabled:
+            type: boolean
+            default: ${{ inputs.submit_to_scheduler != true || inputs.resource.schedulerType != 'pbs' }}
+            hidden: true
+
           account:
             label: Account
             type: string
             optional: true
             tooltip: PBS account for job submission (-A)
-            ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.scheduler == false }}
+            ignore: ${{ inputs.submit_to_scheduler != true || inputs.resource.schedulerType != 'pbs' }}
 
           queue:
             label: Queue
             type: string
             optional: true
             tooltip: PBS queue name (-q)
-            ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.scheduler == false }}
+            ignore: ${{ inputs.submit_to_scheduler != true || inputs.resource.schedulerType != 'pbs' }}
 
           walltime:
             label: Walltime
             type: string
-            default: "04:00:00"
-            tooltip: Maximum job duration for the Ray cluster (-l walltime=)
-            ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.scheduler == false }}
+            default: 04:00:00
+            tooltip: Maximum job duration, e.g., 04:00:00 (-l walltime=)
+            ignore: ${{ inputs.submit_to_scheduler != true || inputs.resource.schedulerType != 'pbs' }}
 
           select:
             label: Resource Selection
             type: string
-            placeholder: "2:ncpus=4:mem=32gb"
-            optional: true
-            tooltip: |
-              PBS resource selection string (-l select=)
-              Example: 2:ncpus=4:mem=32gb for 2 nodes with 4 CPUs and 32GB each
-            ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.scheduler == false }}
+            default: "2:ncpus=4"
+            placeholder: "2:ncpus=4:ngpus=1"
+            tooltip: PBS resource selection string, e.g., 2:ncpus=4:ngpus=1 (-l select=)
+            ignore: ${{ inputs.submit_to_scheduler != true || inputs.resource.schedulerType != 'pbs' }}
 
           scheduler_directives:
             label: Additional Directives
             type: editor
+            tooltip: Additional PBS directives (include #PBS prefix)
             optional: true
-            tooltip: |
-              Additional PBS directives (one per line, include #PBS prefix)
-              Example:
-                #PBS -V
-                #PBS -m ae
-            ignore: ${{ inputs.resource.schedulerType != 'pbs' || inputs.scheduler == false }}
+            ignore: ${{ inputs.submit_to_scheduler != true || inputs.resource.schedulerType != 'pbs' }}
