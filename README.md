@@ -55,23 +55,23 @@ print(results)
 
 Test the scripts locally without the full workflow.
 
-**Requirements:** Python 3.9-3.12 (Ray doesn't support 3.13+ yet)
+**Requirements:** Python 3.9-3.12 (or uv will auto-install 3.12)
 
 ```bash
 # Clone and setup
 git clone https://github.com/parallelworks/activate-ray.git
-cd activate-ray/scripts
+cd activate-ray
 
 # Set required env vars
 export PW_PARENT_JOB_DIR=$(pwd)/test_job
-export RAY_DIR=$(pwd)/..
+export RAY_DIR=$(pwd)
 mkdir -p $PW_PARENT_JOB_DIR
 
 # Run setup (installs Ray)
-bash setup.sh
+bash scripts/setup.sh
 
 # Run start (starts Ray cluster)
-bash start.sh
+bash scripts/start.sh
 ```
 
 Access dashboard at http://localhost:8265
