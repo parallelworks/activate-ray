@@ -59,13 +59,25 @@ echo "  Dashboard Port: ${DASHBOARD_PORT}"
 echo "  Ray Port:       ${RAY_PORT}"
 
 # =============================================================================
-# Check Python
+# Check Python version compatibility
 # =============================================================================
 if ! command -v python3 &> /dev/null; then
     echo "ERROR: python3 not found"
     exit 1
 fi
+
+PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
+PYTHON_MAJOR=$(echo $PYTHON_VERSION | cut -d. -f1)
+PYTHON_MINOR=$(echo $PYTHON_VERSION | cut -d. -f2)
+
 echo "Python: $(python3 --version)"
+
+# Ray 2.40.0 requires Python 3.9-3.12
+if [ "$PYTHON_MAJOR" -ne 3 ] || [ "$PYTHON_MINOR" -lt 9 ] || [ "$PYTHON_MINOR" -gt 12 ]; then
+    echo "ERROR: Ray ${RAY_VERSION} requires Python 3.9-3.12, found ${PYTHON_VERSION}"
+    echo "Please use a compatible Python version or set PYTHON environment variable"
+    exit 1
+fi
 
 # =============================================================================
 # Install Ray using uv (fast) or pip (fallback)

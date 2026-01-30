@@ -53,7 +53,9 @@ print(results)
 
 ## Local Development
 
-Test the scripts locally without the full workflow:
+Test the scripts locally without the full workflow.
+
+**Requirements:** Python 3.9-3.12 (Ray doesn't support 3.13+ yet)
 
 ```bash
 # Clone and setup
@@ -62,7 +64,7 @@ cd activate-ray/scripts
 
 # Set required env vars
 export PW_PARENT_JOB_DIR=$(pwd)/test_job
-export RAY_DIR=$(pwd)
+export RAY_DIR=$(pwd)/..
 mkdir -p $PW_PARENT_JOB_DIR
 
 # Run setup (installs Ray)
