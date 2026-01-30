@@ -171,7 +171,7 @@ jobs:
           name: ${{ sessions.session }}
           remoteHost: ${{ needs.wait_for_service.outputs.HOSTNAME }}
           remotePort: ${{ needs.wait_for_service.outputs.SESSION_PORT }}
-          local_port: ${{ inputs.workspace_port }}
+          localPort: ${{ inputs.workspace_port }}
           slug: /#/jobs
 
   # =============================================================================
@@ -228,7 +228,7 @@ jobs:
         tooltip: Port for Ray dashboard on the remote cluster
 
       workspace_port:
-        label: Workspace Tunnel Port
+        label: Workspace Port
         type: number
         default: 8888
         tooltip: Local port on your PW workspace for accessing the Ray dashboard (via session tunnel)
