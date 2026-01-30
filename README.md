@@ -64,6 +64,23 @@ ssh -L 8888:localhost:8888 -o ProxyCommand="pw ssh --proxy-command %h" $USER@wor
 ray job submit --address=http://localhost:8888 --working-dir . -- python your_script.py
 ```
 
+### Installing Additional Packages
+
+The default Ray installation includes only `ray[default]`. For GPU workloads with PyTorch or TensorFlow:
+
+```bash
+# Activate the Ray virtual environment
+source ~/pw/activate-ray/ray_venv/bin/activate
+
+# Install PyTorch with CUDA support
+pip install torch
+
+# Or install TensorFlow
+pip install tensorflow
+```
+
+> **Note:** The `examples/gpu_workload.py` script works without PyTorch but will show "PyTorch not available" messages. Install PyTorch to enable GPU matrix computations in the example.
+
 ### Connect Programmatically
 
 ```python
