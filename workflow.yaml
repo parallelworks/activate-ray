@@ -15,25 +15,28 @@ jobs:
   # PREPROCESSING
   # =============================================================================
   preprocessing:
+    ssh:
+      remoteHost: ${{ inputs.resource.ip }}
     steps:
+      - name: Expand ray_dir path
+        run: |
+          RAY_DIR="${{ inputs.ray_dir }}"
+          RAY_DIR="${RAY_DIR/#\~/$HOME}"
+          echo "ray_dir=${RAY_DIR}" >> "${OUTPUTS}"
+
       - name: Checkout service scripts
         uses: parallelworks/checkout
-        ssh:
-          remoteHost: ${{ inputs.resource.ip }}
         with:
           repo: https://github.com/parallelworks/activate-ray.git
           branch: main
-          path: ${{ inputs.ray_dir }}
+          path: ${{ needs.preprocessing.outputs.ray_dir }}
           sparse_checkout:
             - scripts
 
       - name: Run controller setup
-        ssh:
-          remoteHost: ${{ inputs.resource.ip }}
         run: |
           set -e
-          RAY_DIR="${{ inputs.ray_dir }}"
-          RAY_DIR="${RAY_DIR/#\~/$HOME}"
+          RAY_DIR="${{ needs.preprocessing.outputs.ray_dir }}"
           cd "${RAY_DIR}/scripts"
           export RAY_VERSION="${{ inputs.ray_version }}"
           export RAY_DIR="${RAY_DIR}"
@@ -61,7 +64,7 @@ jobs:
           scheduler: ${{ inputs.submit_to_scheduler }}
           inject_markers: true
           env:
-            RAY_DIR: ${{ inputs.ray_dir }}
+            RAY_DIR: ${{ needs.preprocessing.outputs.ray_dir }}
           slurm:
             is_disabled: ${{ inputs.submit_to_scheduler != true || inputs.resource.schedulerType != 'slurm' }}
             account: ${{ inputs.slurm.account }}
@@ -82,7 +85,7 @@ jobs:
             scheduler_directives: |
               ${{ inputs.pbs.scheduler_directives }}
           use_existing_script: true
-          script_path: ${{ inputs.ray_dir }}/scripts/start.sh
+          script_path: ${{ needs.preprocessing.outputs.ray_dir }}/scripts/start.sh
 
       - name: Notify job ended
         early-cancel: any-job-failed
