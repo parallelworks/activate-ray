@@ -164,11 +164,6 @@ jobs:
     ssh:
       remoteHost: ${{ inputs.resource.ip }}
     steps:
-      - name: Get local port
-        run: |
-          local_port=$(pw agent open-port)
-          echo "local_port=${local_port}" | tee -a $OUTPUTS
-
       - name: Update session
         uses: parallelworks/update-session
         with:
@@ -176,7 +171,7 @@ jobs:
           name: ${{ sessions.session }}
           remoteHost: ${{ needs.wait_for_service.outputs.HOSTNAME }}
           remotePort: ${{ needs.wait_for_service.outputs.SESSION_PORT }}
-          local_port: ${{ needs.update_session.outputs.local_port }}
+          local_port: 8888
           slug: /#/cluster
 
   # =============================================================================
@@ -187,14 +182,13 @@ jobs:
     steps:
       - name: Session ready
         run: |
-          local_port="${{ needs.update_session.outputs.local_port }}"
           basepath="/me/session/${PW_USER}/${{ sessions.session }}"
           echo "=========================================="
           echo "Ray Dashboard Session is ready!"
           echo "=========================================="
           echo "  Proxy URL: https://${PW_PLATFORM_HOST}${basepath}/"
-          echo "  Local tunnel: ssh -L ${local_port}:localhost:${local_port} -o ProxyCommand=\"pw ssh --proxy-command %h\" ${PW_USER}@workspace"
-          echo "  Then access: http://localhost:${local_port}/"
+          echo "  Local tunnel: ssh -L 8888:localhost:8888 -o ProxyCommand=\"pw ssh --proxy-command %h\" ${PW_USER}@workspace"
+          echo "  Then access: http://localhost:8888/"
           echo "=========================================="
 
 "on":
