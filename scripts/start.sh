@@ -76,7 +76,14 @@ if [ -n "${SLURM_JOB_NODELIST}" ]; then
     echo "Detected SLURM environment"
     NODELIST=$(scontrol show hostnames ${SLURM_JOB_NODELIST})
     HEAD_NODE=$(echo "${NODELIST}" | head -n 1)
-    HEAD_NODE_IP=$(getent hosts ${HEAD_NODE} | awk '{ print $1 }' | head -n 1)
+    # Get the real network IP (not loopback) - try multiple methods
+    HEAD_NODE_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+    if [ -z "${HEAD_NODE_IP}" ] || [[ "${HEAD_NODE_IP}" == 127.* ]]; then
+        HEAD_NODE_IP=$(ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v '^127\.' | head -n 1)
+    fi
+    if [ -z "${HEAD_NODE_IP}" ] || [[ "${HEAD_NODE_IP}" == 127.* ]]; then
+        HEAD_NODE_IP=$(getent hosts ${HEAD_NODE} | awk '{ print $1 }' | grep -v '^127\.' | head -n 1)
+    fi
     [ -z "${HEAD_NODE_IP}" ] && HEAD_NODE_IP=${HEAD_NODE}
     NUM_NODES=${SLURM_JOB_NUM_NODES}
 
@@ -84,7 +91,14 @@ elif [ -n "${PBS_NODEFILE}" ]; then
     echo "Detected PBS environment"
     NODELIST=$(cat ${PBS_NODEFILE} | sort -u)
     HEAD_NODE=$(echo "${NODELIST}" | head -n 1)
-    HEAD_NODE_IP=$(getent hosts ${HEAD_NODE} | awk '{ print $1 }' | head -n 1)
+    # Get the real network IP (not loopback) - try multiple methods
+    HEAD_NODE_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+    if [ -z "${HEAD_NODE_IP}" ] || [[ "${HEAD_NODE_IP}" == 127.* ]]; then
+        HEAD_NODE_IP=$(ip -4 addr show | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v '^127\.' | head -n 1)
+    fi
+    if [ -z "${HEAD_NODE_IP}" ] || [[ "${HEAD_NODE_IP}" == 127.* ]]; then
+        HEAD_NODE_IP=$(getent hosts ${HEAD_NODE} | awk '{ print $1 }' | grep -v '^127\.' | head -n 1)
+    fi
     [ -z "${HEAD_NODE_IP}" ] && HEAD_NODE_IP=${HEAD_NODE}
     NUM_NODES=$(echo "${NODELIST}" | wc -l)
 
