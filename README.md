@@ -51,6 +51,29 @@ results = ray.get([compute.remote(i) for i in range(10)])
 print(results)
 ```
 
+## Local Development
+
+Test the scripts locally without the full workflow:
+
+```bash
+# Clone and setup
+git clone https://github.com/parallelworks/activate-ray.git
+cd activate-ray/scripts
+
+# Set required env vars
+export PW_PARENT_JOB_DIR=$(pwd)/test_job
+export RAY_DIR=$(pwd)
+mkdir -p $PW_PARENT_JOB_DIR
+
+# Run setup (installs Ray)
+bash setup.sh
+
+# Run start (starts Ray cluster)
+bash start.sh
+```
+
+Access dashboard at http://localhost:8265
+
 ## Documentation
 
 - [Configuration Reference](docs/CONFIGURATION.md) - All input options and settings
