@@ -30,10 +30,32 @@ Ray Dashboard Session is ready!
 
 ### Submit Jobs
 
-From the dashboard or via CLI:
-
+**From the cluster head node** (SSH into the resource):
 ```bash
-ray job submit --address=http://localhost:8265 -- python your_script.py
+# Activate the Ray environment
+source ~/pw/activate-ray/ray_venv/bin/activate
+
+# Submit with --working-dir to upload your code
+cd ~/pw/activate-ray/examples
+ray job submit --address=http://localhost:8265 --working-dir . -- python hello_ray.py
+```
+
+**From your PW user workspace** (via tunnel on port 8888):
+```bash
+# Activate the Ray environment
+source ~/pw/activate-ray/ray_venv/bin/activate
+
+# Submit job through the session tunnel
+ray job submit --address=http://localhost:8888 --working-dir . -- python your_script.py
+```
+
+**From your local machine** (via SSH tunnel):
+```bash
+# Set up tunnel first
+ssh -L 8888:localhost:8888 -o ProxyCommand="pw ssh --proxy-command %h" $USER@workspace
+
+# Then submit jobs
+ray job submit --address=http://localhost:8888 --working-dir . -- python your_script.py
 ```
 
 ### Connect Programmatically
@@ -41,7 +63,11 @@ ray job submit --address=http://localhost:8265 -- python your_script.py
 ```python
 import ray
 
-ray.init("ray://localhost:10001")  # Via SSH tunnel or session proxy
+# From cluster head node
+ray.init("ray://localhost:10001")
+
+# Or from workspace/local machine via tunnel
+ray.init("ray://localhost:8888")
 
 @ray.remote
 def compute(x):
