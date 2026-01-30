@@ -171,7 +171,7 @@ jobs:
           name: ${{ sessions.session }}
           remoteHost: ${{ needs.wait_for_service.outputs.HOSTNAME }}
           remotePort: ${{ needs.wait_for_service.outputs.SESSION_PORT }}
-          local_port: 8888
+          local_port: ${{ inputs.workspace_port }}
           slug: /#/jobs
 
   # =============================================================================
@@ -183,12 +183,13 @@ jobs:
       - name: Session ready
         run: |
           basepath="/me/session/${PW_USER}/${{ sessions.session }}"
+          port="${{ inputs.workspace_port }}"
           echo "=========================================="
           echo "Ray Dashboard Session is ready!"
           echo "=========================================="
           echo "  Proxy URL: https://${PW_PLATFORM_HOST}${basepath}/"
-          echo "  Local tunnel: ssh -L 8888:localhost:8888 -o ProxyCommand=\"pw ssh --proxy-command %h\" ${PW_USER}@workspace"
-          echo "  Then access: http://localhost:8888/"
+          echo "  Local tunnel: ssh -L ${port}:localhost:${port} -o ProxyCommand=\"pw ssh --proxy-command %h\" ${PW_USER}@workspace"
+          echo "  Then access: http://localhost:${port}/"
           echo "=========================================="
 
 "on":
@@ -221,10 +222,16 @@ jobs:
         tooltip: Port for Ray head node GCS
 
       dashboard_port:
-        label: Dashboard Port
+        label: Remote Port
         type: number
         default: 8265
-        tooltip: Port for Ray dashboard web interface
+        tooltip: Port for Ray dashboard on the remote cluster
+
+      workspace_port:
+        label: Workspace Tunnel Port
+        type: number
+        default: 8888
+        tooltip: Local port on your PW workspace for accessing the Ray dashboard (via session tunnel)
 
       num_cpus:
         label: CPUs per Node
