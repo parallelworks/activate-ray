@@ -188,7 +188,7 @@ jobs:
           echo "Ray Dashboard Session is ready!"
           echo "=========================================="
           echo "  Proxy URL: https://${PW_PLATFORM_HOST}${basepath}/"
-          echo "  Local tunnel: ssh -L ${port}:localhost:${port} -o ProxyCommand=\"pw ssh --proxy-command %h\" ${PW_USER}@workspace"
+          echo "  Local tunnel: ssh -i ~/.ssh/pwcli -L ${port}:localhost:${port} -o ProxyCommand=\"pw ssh --proxy-command %h\" ${PW_USER}@workspace"
           echo "  Then access: http://localhost:${port}/"
           echo "=========================================="
 
