@@ -102,6 +102,7 @@ echo "=============================================="
 echo "Head Node:    ${HEAD_NODE}"
 echo "Head Node IP: ${HEAD_NODE_IP}"
 echo "Total Nodes:  ${NUM_NODES}"
+echo "Node List:    ${NODELIST}"
 echo ""
 
 # =============================================================================
@@ -138,14 +139,12 @@ if [[ "$(hostname)" == "${HEAD_NODE}"* ]] || [[ "$(hostname -s)" == "${HEAD_NODE
         WORKER_NODES=$(echo "${NODELIST}" | tail -n +2)
         for node in ${WORKER_NODES}; do
             echo "Starting Ray WORKER on ${node}..."
-            if [ -n "${SLURM_JOB_ID}" ]; then
-                srun --nodes=1 --ntasks=1 -w ${node} \
-                    bash -c "source ${VENV_DIR}/bin/activate && ray stop --force 2>/dev/null; ray start --address=${HEAD_NODE_IP}:${RAY_PORT} ${RESOURCE_ARGS}" &
-            else
-                ssh ${node} "source ${VENV_DIR}/bin/activate && ray stop --force 2>/dev/null; ray start --address=${HEAD_NODE_IP}:${RAY_PORT} ${RESOURCE_ARGS}" &
-            fi
+            # Use SSH to start workers - more reliable than srun from within a job
+            ssh -o StrictHostKeyChecking=no ${node} \
+                "source ${VENV_DIR}/bin/activate && ray stop --force 2>/dev/null || true; ray start --address=${HEAD_NODE_IP}:${RAY_PORT} ${RESOURCE_ARGS}" &
         done
         wait
+        echo "All worker start commands issued"
     fi
 
     sleep 5
