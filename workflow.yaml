@@ -172,7 +172,7 @@ jobs:
           remoteHost: ${{ needs.wait_for_service.outputs.HOSTNAME }}
           remotePort: ${{ needs.wait_for_service.outputs.SESSION_PORT }}
           local_port: 8888
-          slug: /#/cluster
+          slug: /#/jobs
 
   # =============================================================================
   # COMPLETE - print connection info
