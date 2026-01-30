@@ -33,6 +33,7 @@ jobs:
           path: ${{ needs.preprocessing.outputs.ray_dir }}
           sparse_checkout:
             - scripts
+            - examples
 
       - name: Run controller setup
         working-directory: ${{ inputs.ray_dir }}/scripts
