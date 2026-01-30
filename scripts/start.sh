@@ -2,7 +2,7 @@
 # start.sh - Ray Cluster Startup Script (runs on compute node)
 #
 # This script runs on the compute node in STEP 2 of the session_runner job.
-# It is submitted via marketplace/job_runner/v5.0 (SLURM/PBS) or runs directly
+# It is submitted via marketplace/job_runner/v4.0 (SLURM/PBS) or runs directly
 # on the controller if no scheduler is configured.
 #
 # It uses resources prepared by setup.sh which runs in STEP 1 on the controller.
@@ -19,13 +19,16 @@ set -e
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Normalize job directory path (remove trailing slash if present)
+# Normalize paths (remove trailing slash, expand ~)
 JOB_DIR="${PW_PARENT_JOB_DIR%/}"
+RAY_DIR="${RAY_DIR:-${HOME}/pw/activate-ray}"
+RAY_DIR="${RAY_DIR/#\~/$HOME}"
 
 echo "=========================================="
 echo "Ray Cluster Starting (Compute Node)"
 echo "=========================================="
 echo "Script directory: ${SCRIPT_DIR}"
+echo "Ray directory: ${RAY_DIR}"
 echo "Job directory: ${JOB_DIR}"
 echo "Working directory: $(pwd)"
 
@@ -50,8 +53,8 @@ else
   echo "Warning: SETUP_COMPLETE marker not found in ${JOB_DIR}"
 fi
 
-# Configuration defaults
-VENV_DIR="${VENV_DIR:-${JOB_DIR}/ray_venv}"
+# Configuration defaults - venv is in shared RAY_DIR
+VENV_DIR="${VENV_DIR:-${RAY_DIR}/ray_venv}"
 RAY_PORT="${RAY_PORT:-6379}"
 DASHBOARD_PORT="${DASHBOARD_PORT:-8265}"
 NUM_CPUS="${NUM_CPUS:-}"

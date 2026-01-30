@@ -10,6 +10,7 @@
 # - Set up shared resources accessible by compute nodes
 #
 # Environment variables:
+#   RAY_DIR        - Shared directory for Ray installation (default: ~/pw/activate-ray)
 #   RAY_VERSION    - Ray version to install (default: 2.40.0)
 #   DASHBOARD_PORT - Dashboard port (default: 8265)
 #   RAY_PORT       - Ray GCS port (default: 6379)
@@ -18,6 +19,8 @@
 #
 # Coordinate files written here:
 #   - SETUP_COMPLETE - Signals that setup completed successfully
+#
+# Note: Ray venv is installed in RAY_DIR to allow reuse across runs
 
 set -e
 
@@ -27,9 +30,13 @@ echo "=========================================="
 echo "Ray Cluster Setup (Controller Node)"
 echo "=========================================="
 
-# Normalize job directory path (remove trailing slash if present)
+# Normalize paths (remove trailing slash, expand ~)
 JOB_DIR="${PW_PARENT_JOB_DIR%/}"
+RAY_DIR="${RAY_DIR:-${HOME}/pw/activate-ray}"
+RAY_DIR="${RAY_DIR/#\~/$HOME}"
+
 echo "Job directory: ${JOB_DIR}"
+echo "Ray directory: ${RAY_DIR}"
 echo "Working directory: $(pwd)"
 
 # Source inputs if available
@@ -39,9 +46,9 @@ elif [ -f "${JOB_DIR}/inputs.sh" ]; then
   source "${JOB_DIR}/inputs.sh"
 fi
 
-# Configuration
+# Configuration - venv lives in shared RAY_DIR for reuse
 RAY_VERSION="${RAY_VERSION:-2.40.0}"
-VENV_DIR="${JOB_DIR}/ray_venv"
+VENV_DIR="${RAY_DIR}/ray_venv"
 DASHBOARD_PORT="${DASHBOARD_PORT:-8265}"
 RAY_PORT="${RAY_PORT:-6379}"
 
@@ -81,23 +88,41 @@ install_uv() {
     command -v uv &> /dev/null
 }
 
-echo ""
-echo "Installing Ray ${RAY_VERSION}..."
+# =============================================================================
+# Check if Ray is already installed at correct version
+# =============================================================================
+INSTALLED_VERSION=""
+if [ -f "${VENV_DIR}/bin/python" ]; then
+    INSTALLED_VERSION=$("${VENV_DIR}/bin/python" -c "import ray; print(ray.__version__)" 2>/dev/null || echo "")
+fi
 
-if install_uv; then
-    echo "Using uv for fast installation..."
-    if [ ! -d "${VENV_DIR}" ]; then
-        uv venv "${VENV_DIR}"
-    fi
-    uv pip install --python "${VENV_DIR}/bin/python" "ray[default]==${RAY_VERSION}"
+if [ "${INSTALLED_VERSION}" == "${RAY_VERSION}" ]; then
+    echo ""
+    echo "Ray ${RAY_VERSION} already installed in ${VENV_DIR}"
+    echo "Skipping installation."
 else
-    echo "Using pip for installation..."
-    if [ ! -d "${VENV_DIR}" ]; then
-        python3 -m venv "${VENV_DIR}"
+    echo ""
+    if [ -n "${INSTALLED_VERSION}" ]; then
+        echo "Ray ${INSTALLED_VERSION} found, upgrading to ${RAY_VERSION}..."
+    else
+        echo "Installing Ray ${RAY_VERSION}..."
     fi
-    source "${VENV_DIR}/bin/activate"
-    pip install --upgrade pip --quiet
-    pip install "ray[default]==${RAY_VERSION}" --quiet
+
+    if install_uv; then
+        echo "Using uv for fast installation..."
+        if [ ! -d "${VENV_DIR}" ]; then
+            uv venv "${VENV_DIR}"
+        fi
+        uv pip install --python "${VENV_DIR}/bin/python" "ray[default]==${RAY_VERSION}"
+    else
+        echo "Using pip for installation..."
+        if [ ! -d "${VENV_DIR}" ]; then
+            python3 -m venv "${VENV_DIR}"
+        fi
+        source "${VENV_DIR}/bin/activate"
+        pip install --upgrade pip --quiet
+        pip install "ray[default]==${RAY_VERSION}" --quiet
+    fi
 fi
 
 # Verify installation
@@ -109,6 +134,7 @@ python3 -c "import ray; print(f'Ray {ray.__version__} ready')"
 # Write environment config for start.sh
 # =============================================================================
 cat > "${JOB_DIR}/ray_config.sh" << EOF
+export RAY_DIR="${RAY_DIR}"
 export VENV_DIR="${VENV_DIR}"
 export RAY_VERSION="${RAY_VERSION}"
 export RAY_PORT="${RAY_PORT}"
