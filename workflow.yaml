@@ -38,7 +38,6 @@ jobs:
           export NUM_CPUS="${{ inputs.num_cpus }}"
           export NUM_GPUS="${{ inputs.num_gpus }}"
           export PW_SESSION_NAME="${{ sessions.session }}"
-          export DASHBOARD_PREFIX="/me/session/${PW_USER}/${{ sessions.session }}"
           bash setup.sh
 
   # =============================================================================

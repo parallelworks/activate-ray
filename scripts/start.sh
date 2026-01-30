@@ -54,7 +54,6 @@ fi
 VENV_DIR="${VENV_DIR:-${JOB_DIR}/ray_venv}"
 RAY_PORT="${RAY_PORT:-6379}"
 DASHBOARD_PORT="${DASHBOARD_PORT:-8265}"
-DASHBOARD_PREFIX="${DASHBOARD_PREFIX:-}"
 NUM_CPUS="${NUM_CPUS:-}"
 NUM_GPUS="${NUM_GPUS:-}"
 
@@ -63,7 +62,6 @@ source "${VENV_DIR}/bin/activate"
 
 # Build resource args
 RESOURCE_ARGS=""
-[ -n "${DASHBOARD_PREFIX}" ] && RESOURCE_ARGS="${RESOURCE_ARGS} --dashboard-prefix=${DASHBOARD_PREFIX}"
 [ -n "${NUM_CPUS}" ] && [ "${NUM_CPUS}" != "0" ] && RESOURCE_ARGS="${RESOURCE_ARGS} --num-cpus=${NUM_CPUS}"
 [ -n "${NUM_GPUS}" ] && [ "${NUM_GPUS}" != "0" ] && RESOURCE_ARGS="${RESOURCE_ARGS} --num-gpus=${NUM_GPUS}"
 
