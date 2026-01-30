@@ -30,22 +30,28 @@ Ray Dashboard Session is ready!
 
 ### Submit Jobs
 
-**From the cluster head node** (SSH into the resource):
+**From the Ray head node** (same machine running Ray):
 ```bash
-# Activate the Ray environment
+source ~/pw/activate-ray/ray_venv/bin/activate
+cd ~/pw/activate-ray/examples
+
+# Use absolute path for local files
+ray job submit --address=http://localhost:8265 -- python $PWD/hello_ray.py
+```
+
+**From the cluster controller** (different machine than head node):
+```bash
 source ~/pw/activate-ray/ray_venv/bin/activate
 
-# Submit with --working-dir to upload your code
-cd ~/pw/activate-ray/examples
+# Use --working-dir to upload your code to Ray
 ray job submit --address=http://localhost:8265 --working-dir . -- python hello_ray.py
 ```
 
 **From your PW user workspace** (via tunnel on port 8888):
 ```bash
-# Activate the Ray environment
 source ~/pw/activate-ray/ray_venv/bin/activate
 
-# Submit job through the session tunnel
+# Submit job through the session tunnel (uploads code via --working-dir)
 ray job submit --address=http://localhost:8888 --working-dir . -- python your_script.py
 ```
 
@@ -54,7 +60,7 @@ ray job submit --address=http://localhost:8888 --working-dir . -- python your_sc
 # Set up tunnel first
 ssh -L 8888:localhost:8888 -o ProxyCommand="pw ssh --proxy-command %h" $USER@workspace
 
-# Then submit jobs
+# Then submit jobs (uploads code via --working-dir)
 ray job submit --address=http://localhost:8888 --working-dir . -- python your_script.py
 ```
 
