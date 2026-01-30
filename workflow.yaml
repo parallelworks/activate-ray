@@ -23,6 +23,7 @@ jobs:
           RAY_DIR="${{ inputs.ray_dir }}"
           RAY_DIR="${RAY_DIR/#\~/$HOME}"
           echo "ray_dir=${RAY_DIR}" >> "${OUTPUTS}"
+          echo "script_path=${RAY_DIR}/scripts/start.sh" >> "${OUTPUTS}"
 
       - name: Checkout service scripts
         uses: parallelworks/checkout
@@ -84,7 +85,7 @@ jobs:
             scheduler_directives: |
               ${{ inputs.pbs.scheduler_directives }}
           use_existing_script: true
-          script_path: ${{ needs.preprocessing.outputs.ray_dir }}/scripts/start.sh
+          script_path: ${{ needs.preprocessing.outputs.script_path }}
 
       - name: Notify job ended
         early-cancel: any-job-failed
