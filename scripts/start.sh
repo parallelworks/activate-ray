@@ -64,7 +64,14 @@ NUM_GPUS="${NUM_GPUS:-}"
 # Activate virtual environment
 source "${VENV_DIR}/bin/activate"
 
-# Build resource args
+# GPU debugging
+echo "GPU Environment:"
+echo "  CUDA_VISIBLE_DEVICES: ${CUDA_VISIBLE_DEVICES:-not set}"
+echo "  SLURM_GPUS: ${SLURM_GPUS:-not set}"
+echo "  SLURM_GPUS_ON_NODE: ${SLURM_GPUS_ON_NODE:-not set}"
+nvidia-smi -L 2>/dev/null || echo "  nvidia-smi not available or no GPUs"
+
+# Build resource args - only override if explicitly set
 RESOURCE_ARGS=""
 [ -n "${NUM_CPUS}" ] && [ "${NUM_CPUS}" != "0" ] && RESOURCE_ARGS="${RESOURCE_ARGS} --num-cpus=${NUM_CPUS}"
 [ -n "${NUM_GPUS}" ] && [ "${NUM_GPUS}" != "0" ] && RESOURCE_ARGS="${RESOURCE_ARGS} --num-gpus=${NUM_GPUS}"
@@ -153,9 +160,14 @@ if [[ "$(hostname)" == "${HEAD_NODE}"* ]] || [[ "$(hostname -s)" == "${HEAD_NODE
         WORKER_NODES=$(echo "${NODELIST}" | tail -n +2)
         for node in ${WORKER_NODES}; do
             echo "Starting Ray WORKER on ${node}..."
-            # Use SSH to start workers - more reliable than srun from within a job
+            # Use SSH to start workers - preserve CUDA environment for GPU detection
             ssh -o StrictHostKeyChecking=no ${node} \
-                "source ${VENV_DIR}/bin/activate && ray stop --force 2>/dev/null || true; ray start --address=${HEAD_NODE_IP}:${RAY_PORT} ${RESOURCE_ARGS}" &
+                "export PATH='${PATH}'; \
+                 export LD_LIBRARY_PATH='${LD_LIBRARY_PATH:-}'; \
+                 source ${VENV_DIR}/bin/activate && \
+                 echo 'Worker GPU check:' && nvidia-smi -L 2>/dev/null || echo 'No GPUs visible'; \
+                 ray stop --force 2>/dev/null || true; \
+                 ray start --address=${HEAD_NODE_IP}:${RAY_PORT} ${RESOURCE_ARGS}" &
         done
         wait
         echo "All worker start commands issued"
