@@ -1,0 +1,26 @@
+# Virtual environments
+.venv/
+venv/
+
+# Python cache
+.pytest_cache/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# uv
+uv.lock
+
+# ACTIVATE internal
+.lanes/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

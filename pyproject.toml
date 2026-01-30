@@ -1,0 +1,36 @@
+[project]
+name = "activate-ray"
+version = "0.1.0"
+description = "ACTIVATE workflow for deploying Ray clusters on HPC resources"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+ray = [
+    "ray[default]>=2.9.0",
+    "numpy>=1.20.0",
+]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+all = [
+    "activate-ray[ray,dev]",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+filterwarnings = ["ignore::DeprecationWarning"]
