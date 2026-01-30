@@ -34,7 +34,7 @@ class TestWorkflowExecution:
         context = ExecutionContext(
             inputs={
                 "resource": {"ip": "localhost", "schedulerType": ""},
-                "ray_version": "2.9.0",
+                "ray_version": "2.40.0",
                 "ray_port": 6379,
                 "dashboard_port": 8265,
                 "num_cpus": 0,
@@ -70,7 +70,7 @@ sys.exit(0)
         context = ExecutionContext(
             inputs={
                 "resource": {"ip": "localhost", "schedulerType": ""},
-                "ray_version": "2.9.0",
+                "ray_version": "2.40.0",
                 "ray_port": 6379,
                 "dashboard_port": 8265,
                 "num_cpus": 2,
@@ -101,7 +101,7 @@ sys.exit(0)
         context = ExecutionContext(
             inputs={
                 "resource": {"ip": "localhost", "schedulerType": ""},
-                "ray_version": "2.9.0",
+                "ray_version": "2.40.0",
                 "ray_port": 6379,
                 "dashboard_port": 8265,
                 "num_cpus": 0,
@@ -136,7 +136,7 @@ sys.exit(0)
         context = ExecutionContext(
             inputs={
                 "resource": {"ip": "localhost", "schedulerType": ""},
-                "ray_version": "2.9.0",
+                "ray_version": "2.40.0",
                 "ray_port": 6379,
                 "dashboard_port": 8265,
                 "num_cpus": 0,
@@ -440,7 +440,7 @@ class TestWorkflowInputDefaults:
 
         inputs = workflow.get("on", {}).get("execute", {}).get("inputs", {})
         assert "ray_version" in inputs
-        assert inputs["ray_version"].get("default") == "2.9.0"
+        assert inputs["ray_version"].get("default") == "2.40.0"
 
     def test_default_ports(self, workflow_path: Path):
         """Test that default ports are set."""

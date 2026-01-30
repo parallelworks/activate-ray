@@ -13,7 +13,7 @@ echo "=============================================="
 echo ""
 
 # Configuration from environment
-RAY_VERSION="${RAY_VERSION:-2.9.0}"
+RAY_VERSION="${RAY_VERSION:-2.40.0}"
 VENV_DIR="${VENV_DIR:-${PW_PARENT_JOB_DIR}/ray_venv}"
 EXTRA_PACKAGES="${EXTRA_PACKAGES:-}"
 USE_UV="${USE_UV:-true}"
