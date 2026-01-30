@@ -61,22 +61,19 @@ echo "  Ray Port:       ${RAY_PORT}"
 # =============================================================================
 # Check Python version compatibility
 # =============================================================================
-if ! command -v python3 &> /dev/null; then
-    echo "ERROR: python3 not found"
-    exit 1
-fi
-
 PYTHON_VERSION=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
 PYTHON_MAJOR=$(echo $PYTHON_VERSION | cut -d. -f1)
 PYTHON_MINOR=$(echo $PYTHON_VERSION | cut -d. -f2)
 
-echo "Python: $(python3 --version)"
+echo "System Python: $(python3 --version)"
 
 # Ray 2.40.0 requires Python 3.9-3.12
+# If system Python is incompatible, we'll use uv to get a compatible version
+PYTHON_COMPATIBLE=true
 if [ "$PYTHON_MAJOR" -ne 3 ] || [ "$PYTHON_MINOR" -lt 9 ] || [ "$PYTHON_MINOR" -gt 12 ]; then
-    echo "ERROR: Ray ${RAY_VERSION} requires Python 3.9-3.12, found ${PYTHON_VERSION}"
-    echo "Please use a compatible Python version or set PYTHON environment variable"
-    exit 1
+    echo "Note: Ray ${RAY_VERSION} requires Python 3.9-3.12, system has ${PYTHON_VERSION}"
+    echo "Will use uv to install with Python 3.12"
+    PYTHON_COMPATIBLE=false
 fi
 
 # =============================================================================
@@ -123,11 +120,21 @@ else
     if install_uv; then
         echo "Using uv for fast installation..."
         if [ ! -d "${VENV_DIR}" ]; then
-            uv venv "${VENV_DIR}"
+            if [ "$PYTHON_COMPATIBLE" = false ]; then
+                echo "Creating venv with Python 3.12 (uv will download if needed)..."
+                uv venv "${VENV_DIR}" --python 3.12
+            else
+                uv venv "${VENV_DIR}"
+            fi
         fi
         uv pip install --python "${VENV_DIR}/bin/python" "ray[default]==${RAY_VERSION}"
     else
         echo "Using pip for installation..."
+        if [ "$PYTHON_COMPATIBLE" = false ]; then
+            echo "ERROR: System Python ${PYTHON_VERSION} is incompatible with Ray ${RAY_VERSION}"
+            echo "Install uv or use Python 3.9-3.12"
+            exit 1
+        fi
         if [ ! -d "${VENV_DIR}" ]; then
             python3 -m venv "${VENV_DIR}"
         fi
