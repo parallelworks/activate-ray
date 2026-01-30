@@ -1,6 +1,10 @@
 # Virtual environments
 .venv/
 venv/
+ray_venv/
+
+# Test artifacts
+test_job/
 
 # Python cache
 .pytest_cache/
